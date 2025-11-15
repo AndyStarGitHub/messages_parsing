@@ -1,6 +1,5 @@
 import time
 import pickle
-from datetime import timedelta
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Set, Dict, Tuple
 from urllib.parse import urlparse
@@ -12,33 +11,18 @@ from urlextract import URLExtract
 import requests
 
 
-# ==========================
-# Конфігурація програми
-# ==========================
-
-# Файл з даними для парсингу
 DATA_FILE = Path("data") / "messages_to_parse.dat"
-
-# Ліміт кількості записів для обробки.
-# None  -> обробляємо всі записи
-# число -> обробляємо тільки перші N записів
-DEBUG_LIMIT: Optional[int] = 100
-# DEBUG_LIMIT: Optional[int] = None
-# Для фінального запуску можна буде поставити:
-# DEBUG_LIMIT = None
+# DEBUG_LIMIT: Optional[int] = 100
+# Для робочого режиму:
+DEBUG_LIMIT = None
 
 # Режим роботи з unshorten URL:
-# "6.1"  -> тільки підхід зі списком коротювачів
-# "6.2"  -> перевіряти всі URL на редіректи
-# "both" -> (для експериментів) працює як "6.2", але в логах показує статистику по коротювачах
-# UNSHORTEN_MODE: str = "6.1"
-# UNSHORTEN_MODE: str = "6.2"
-UNSHORTEN_MODE: str = "both"
+# UNSHORTEN_MODE: str = "6.1"  # тільки підхід зі списком "коротювачів"
+# UNSHORTEN_MODE: str = "6.2"  # перевіряти всі URL на редиректи
+UNSHORTEN_MODE: str = "both"  # (для експериментів)
 
-# Кількість потоків для перевірки URL
 MAX_WORKERS: int = 10
 
-# Таймаут для HTTP-запитів у секундах
 REQUEST_TIMEOUT: int = 5
 
 # Відомі домени-коротювачі (для режиму 6.1)
@@ -59,21 +43,14 @@ SHORTENER_DOMAINS = {
 }
 
 
-# ==========================
-# Налаштування логування
-# ==========================
-
 def setup_logging() -> None:
-    """Налаштувати loguru: логування в файл з ротацією кожні 5 хв та ретеншном 20 хв."""
     logger.remove()
 
-    # Лог у консоль (простий варіант)
     logger.add(
         sink=lambda msg: print(msg, end=""),
         level="INFO",
     )
 
-    # Лог у файл: новий файл кожні 5 хвилин, старші 20 хв видаляються
     Path("logs").mkdir(exist_ok=True)
     logger.add(
         "logs/app_{time}.log",
@@ -85,16 +62,7 @@ def setup_logging() -> None:
     )
 
 
-# ==========================
-# Робота з даними
-# ==========================
-
 def load_messages(path: Path) -> Any:
-    """
-    Завантажити дані з pickle-файлу.
-
-    Повертає те, що лежить всередині messages_to_parse.dat.
-    """
     logger.info(f"Спроба завантажити дані з файлу: {path}\n")
 
     if not path.exists():
@@ -111,17 +79,14 @@ def load_messages(path: Path) -> Any:
 
 
 def apply_debug_limit(items: Iterable[Any], limit: Optional[int]) -> List[Any]:
-    """
-    Застосувати DEBUG_LIMIT до послідовності елементів.
-
-    Якщо limit is None -> повертаємо всі елементи.
-    Якщо число        -> повертаємо тільки перші limit.
-    """
     items_list = list(items)
 
     if limit is None:
         logger.info(
-            f"DEBUG_LIMIT не встановлений. Обробляємо всі {len(items_list)} елемент(и/ів).\n"
+            f"DEBUG_LIMIT не встановлений.\n"
+        )
+        logger.info(
+            f"Обробляємо всі {len(items_list)} елемент(и/ів).\n"
         )
         return items_list
 
@@ -133,16 +98,7 @@ def apply_debug_limit(items: Iterable[Any], limit: Optional[int]) -> List[Any]:
     return limited
 
 
-# ==========================
-# Витягування URL з повідомлень
-# ==========================
-
 def extract_urls_from_messages(messages: Iterable[Any]) -> List[str]:
-    """
-    Пройтись по всіх повідомленнях, витягнути всі URL за допомогою URLExtract.
-
-    Повертає відсортований список унікальних URL (без дублікатів).
-    """
     extractor = URLExtract()
     all_urls: Set[str] = set()
 
@@ -163,7 +119,6 @@ def extract_urls_from_messages(messages: Iterable[Any]) -> List[str]:
 
     logger.info(f"Всього знайдено унікальних URL: {len(urls_list)}\n")
 
-    # Покажемо кілька перших для наочності
     preview_count = min(10, len(urls_list))
     if preview_count > 0:
         preview = urls_list[:preview_count]
@@ -178,30 +133,13 @@ def extract_urls_from_messages(messages: Iterable[Any]) -> List[str]:
     return urls_list
 
 
-# ==========================
-# Перевірка доступності URL
-# ==========================
-
 def normalize_url(url: str) -> str:
-    """
-    Додати схему http:// якщо її немає.
-
-    Приклад:
-      - 'Realtor.com'      -> 'http://Realtor.com'
-      - 'http://example'   -> без змін
-      - 'https://example'  -> без змін
-    """
     if url.startswith(("http://", "https://")):
         return url
     return "http://" + url
 
 
 def check_url_status(url: str) -> Tuple[str, Optional[int]]:
-    """
-    Перевірити один URL за допомогою requests.head.
-
-    Повертає кортеж (оригінальний_url, status_code або None у разі помилки).
-    """
     normalized = normalize_url(url)
 
     try:
@@ -219,11 +157,6 @@ def check_url_status(url: str) -> Tuple[str, Optional[int]]:
 
 
 def build_url_status_dict(urls: List[str]) -> Dict[str, Optional[int]]:
-    """
-    Перевірити список URL у потоках і сформувати словник:
-      ключ     -> оригінальний URL
-      значення -> status_code (або None, якщо була помилка)
-    """
     if not urls:
         logger.info("Список URL порожній, перевіряти нічого.\n")
         return {}
@@ -245,10 +178,11 @@ def build_url_status_dict(urls: List[str]) -> Dict[str, Optional[int]]:
                 orig_url, status_code = future.result()
                 results[orig_url] = status_code
             except Exception as e:
-                logger.exception(f"[build_url_status_dict] Непередбачена помилка для {url}: {e}\n")
+                logger.exception(
+                    f"[build_url_status_dict] Непередбачена помилка для {url}: {e}\n"
+                )
                 results[url] = None
 
-    # Трохи статистики
     successful = sum(1 for s in results.values() if isinstance(s, int) and 200 <= s < 400)
     failed = sum(1 for s in results.values() if s is None or not (200 <= (s or 0) < 400))
 
@@ -258,7 +192,6 @@ def build_url_status_dict(urls: List[str]) -> Dict[str, Optional[int]]:
         f"з помилками/ін. статусом: {failed}.\n"
     )
 
-    # Покажемо кілька прикладів
     preview_items = list(results.items())[: min(10, len(results))]
     if preview_items:
         logger.info("Приклади результатів перевірки URL:\n")
@@ -268,15 +201,7 @@ def build_url_status_dict(urls: List[str]) -> Dict[str, Optional[int]]:
     return results
 
 
-# ==========================
-# Визначення скорочених URL + unshorten
-# ==========================
-
 def is_shortened_url(url: str) -> bool:
-    """
-    Перевірити, чи URL належить відомому коротювачу (по домену).
-    Використовується в режимі 6.1.
-    """
     normalized = normalize_url(url)
     parsed = urlparse(normalized)
     host = parsed.netloc.lower()
@@ -288,12 +213,6 @@ def is_shortened_url(url: str) -> bool:
 
 
 def unshorten_url(url: str) -> Tuple[str, str]:
-    """
-    Розкрити (unshorten) один URL.
-
-    Повертає (оригінальний_url, фінальний_url).
-    Якщо помилка — фінальним вважаємо нормалізований варіант.
-    """
     normalized = normalize_url(url)
 
     try:
@@ -311,34 +230,23 @@ def unshorten_url(url: str) -> Tuple[str, str]:
 
 
 def build_unshorten_mapping(urls: List[str], mode: str) -> Dict[str, str]:
-    """
-    Побудувати словник:
-        оригінальний URL -> розкритий (фінальний) URL
-
-    Залежить від режиму:
-      - "6.1": тільки коротювачі зі списку SHORTENER_DOMAINS
-      - "6.2": всі URL
-      - "both": зараз працює як "6.2", але додатково логуються
-                скільки URL потрапляють під 6.1.
-    """
     if not urls:
         logger.info("Список URL порожній, розкривати нічого.\n")
         return {}
 
-    # Визначаємо, які URL будемо розкривати
     shortened_urls = [u for u in urls if is_shortened_url(u)]
 
     if mode == "6.1":
         target_urls = shortened_urls
         logger.info(
-            f"UNSHORTEN_MODE=6.1. Будемо розкривати тільки коротювачі зі списку. "
-            f"Кількість таких URL: {len(target_urls)} з {len(urls)} загальних.\n"
+            f"UNSHORTEN_MODE=6.1. Будемо розкривати коротювачі зі списку. "
+            f"Кількість таких URL: {len(target_urls)} з {len(urls)}.\n"
         )
     elif mode in ("6.2", "both"):
         target_urls = urls
         logger.info(
             f"UNSHORTEN_MODE={mode}. Будемо розкривати ВСІ URL. "
-            f"З них {len(shortened_urls)} виглядають як коротювачі зі списку.\n"
+            f"З них {len(shortened_urls)} схожі на коротювачів зі списку.\n"
         )
         if mode == "both":
             logger.info(
@@ -382,7 +290,6 @@ def build_unshorten_mapping(urls: List[str], mode: str) -> Dict[str, str]:
         f"Час виконання блоку unshorten: {duration:.3f} сек.\n"
     )
 
-    # Покажемо кілька прикладів
     preview_items = list(results.items())[: min(10, len(results))]
     if preview_items:
         logger.info("Приклади результатів розкриття URL:\n")
@@ -391,10 +298,6 @@ def build_unshorten_mapping(urls: List[str], mode: str) -> Dict[str, str]:
 
     return results
 
-
-# ==========================
-# Головна функція
-# ==========================
 
 def main() -> None:
     setup_logging()
@@ -406,17 +309,17 @@ def main() -> None:
 
     start_time = time.perf_counter()
 
-    # 1. Завантажуємо дані з pickle
     try:
         raw_data = load_messages(DATA_FILE)
     except Exception as e:
         logger.exception(f"Помилка при завантаженні даних: {e}\n")
         return
 
-    # 2. Пробуємо привести дані до послідовності "повідомлень"
     if isinstance(raw_data, (list, tuple)):
         messages_seq = raw_data
-        logger.info(f"Завантажено послідовність з {len(messages_seq)} елемент(ів).\n")
+        logger.info(
+            f"Завантажено послідовність з {len(messages_seq)} елемент(ів).\n"
+        )
     else:
         logger.warning(
             "Формат даних не є списком/кортежем. "
@@ -427,24 +330,21 @@ def main() -> None:
     # 3. Застосовуємо DEBUG_LIMIT
     messages = apply_debug_limit(messages_seq, DEBUG_LIMIT)
 
-    logger.info(f"Готово до подальшої обробки. Кількість повідомлень: {len(messages)}\n")
+    logger.info(
+        f"Готово до обробки. Кількість повідомлень: {len(messages)}\n"
+    )
 
-    # 4. Витягуємо всі URL з повідомлень
     urls = extract_urls_from_messages(messages)
-    logger.info(f"Після витягання URL маємо {len(urls)} унікальн(ий/их) URL.\n")
+    logger.info(f"Після витягання маємо {len(urls)} унікальн(ий/их) URL.\n")
 
-    # 5. Перевіряємо доступність кожного URL (requests.head + threading)
     url_status_dict = build_url_status_dict(urls)
     logger.info(
         f"Словник url -> status_code сформовано. "
         f"Кількість ключів: {len(url_status_dict)}\n"
     )
 
-    # === ПУНКТ 4 ЗАВДАННЯ ===
-    # 1-й довідник: оригінальний URL -> status_code
     original_to_status = url_status_dict
 
-    # 2-й довідник: оригінальний URL -> розкритий (фінальний) URL
     original_to_unshortened = build_unshorten_mapping(urls, UNSHORTEN_MODE)
 
     logger.info(
@@ -455,7 +355,9 @@ def main() -> None:
 
     end_time = time.perf_counter()
     duration = end_time - start_time
-    logger.info(f"=== Завершення програми. Час виконання: {duration:.3f} сек. ===\n")
+    logger.info(
+        f"=== Завершення програми. Час виконання: {duration:.3f} сек. ===\n"
+    )
 
 
 if __name__ == "__main__":
