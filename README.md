@@ -39,10 +39,10 @@
         `original_to_status = { "<URL>": <status_code>, ... }`
 5.  **Розкриття скорочених URL (unshorten)**
     -   Скорочені URL визначаються за доменами "скорочувачів" (`bit.ly`,
-        `t.co`, `newspr.es`, `ow.ly`, `ti.me` тощо). Список можна розширювати.
+        `t.co`, `newspr.es`, `ow.ly`, `ti.me` тощо). Цей перелік можна розширювати.
     -   Для розкриття використовується `requests.get` з
         `allow_redirects=True`.
-    -   Фінальний URL -- це адреса, на яку відбувається редірект.
+    -   Фінальний URL -- це адреса, на яку відбувається переадресація.
     -   Формується словник:\
         `original_to_unshortened = { "<оригінальний URL>": "<фінальний URL>", ... }`
 6.  **Лоґування (loguru)**
@@ -84,7 +84,7 @@
 
 ## Швидкий старт (Windows PowerShell / Linux / macOS)
 
-### 1) Клон/копіювання проєкту та створення venv
+### 1) Клон/копіювання проєкту та створення віртуального середовища
 ```bash
 git clone https://github.com/AndyStarGitHub/messages_parsing.git
 cd messages_parsing
