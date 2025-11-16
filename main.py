@@ -17,7 +17,7 @@ DATA_FILE = Path("data") / "messages_to_parse.dat"
 DEBUG_LIMIT = None
 
 # Режим роботи з unshorten URL:
-# UNSHORTEN_MODE: str = "6.1"  # тільки підхід зі списком "коротювачів"
+# UNSHORTEN_MODE: str = "6.1"  # тільки підхід зі списком "скорочувачів"
 # UNSHORTEN_MODE: str = "6.2"  # перевіряти всі URL на редиректи
 UNSHORTEN_MODE: str = "both"  # (для експериментів)
 
@@ -25,7 +25,7 @@ MAX_WORKERS: int = 10
 
 REQUEST_TIMEOUT: int = 5
 
-# Відомі домени-коротювачі (для режиму 6.1)
+# Відомі домени-скорочувачі (для режиму 6.1)
 SHORTENER_DOMAINS = {
     "bit.ly",
     "t.co",
@@ -110,7 +110,7 @@ def extract_urls_from_messages(messages: Iterable[Any]) -> List[str]:
 
         if found_urls:
             all_urls.update(found_urls)
-            logger.debug(
+            logger.info(
                 f"[extract_urls_from_messages] Повідомлення #{idx}: "
                 f"знайдено {len(found_urls)} URL.\n"
             )
@@ -149,7 +149,7 @@ def check_url_status(url: str) -> Tuple[str, Optional[int]]:
             timeout=REQUEST_TIMEOUT,
         )
         status_code = response.status_code
-        logger.debug(f"[check_url_status] {url} -> {status_code}\n")
+        logger.info(f"[check_url_status] {url} -> {status_code}\n")
         return url, status_code
     except requests.RequestException as e:
         logger.warning(f"[check_url_status] Помилка для {url}: {e}\n")
@@ -222,7 +222,7 @@ def unshorten_url(url: str) -> Tuple[str, str]:
             timeout=REQUEST_TIMEOUT,
         )
         final_url = response.url
-        logger.debug(f"[unshorten_url] {url} -> {final_url}\n")
+        logger.info(f"[unshorten_url] {url} -> {final_url}\n")
         return url, final_url
     except requests.RequestException as e:
         logger.warning(f"[unshorten_url] Помилка для {url}: {e}\n")
@@ -239,14 +239,14 @@ def build_unshorten_mapping(urls: List[str], mode: str) -> Dict[str, str]:
     if mode == "6.1":
         target_urls = shortened_urls
         logger.info(
-            f"UNSHORTEN_MODE=6.1. Будемо розкривати коротювачі зі списку. "
+            f"UNSHORTEN_MODE=6.1. Будемо розкривати скорочувачі зі списку. "
             f"Кількість таких URL: {len(target_urls)} з {len(urls)}.\n"
         )
     elif mode in ("6.2", "both"):
         target_urls = urls
         logger.info(
             f"UNSHORTEN_MODE={mode}. Будемо розкривати ВСІ URL. "
-            f"З них {len(shortened_urls)} схожі на коротювачів зі списку.\n"
+            f"З них {len(shortened_urls)} схожі на скорочувачів зі списку.\n"
         )
         if mode == "both":
             logger.info(
