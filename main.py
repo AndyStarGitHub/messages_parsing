@@ -17,9 +17,9 @@ DATA_FILE = Path("data") / "messages_to_parse.dat"
 DEBUG_LIMIT = None
 
 # Режим роботи з unshorten URL:
-# UNSHORTEN_MODE: str = "6.1"  # тільки підхід зі списком "скорочувачів"
+UNSHORTEN_MODE: str = "6.1"  # тільки підхід зі списком "скорочувачів"
 # UNSHORTEN_MODE: str = "6.2"  # перевіряти всі URL на редиректи
-UNSHORTEN_MODE: str = "both"  # (для експериментів)
+# UNSHORTEN_MODE: str = "both"  # (для експериментів)
 
 MAX_WORKERS: int = 10
 
@@ -327,7 +327,6 @@ def main() -> None:
         )
         messages_seq = [raw_data]
 
-    # 3. Застосовуємо DEBUG_LIMIT
     messages = apply_debug_limit(messages_seq, DEBUG_LIMIT)
 
     logger.info(
@@ -335,7 +334,7 @@ def main() -> None:
     )
 
     urls = extract_urls_from_messages(messages)
-    logger.info(f"Після витягання маємо {len(urls)} унікальн(ий/их) URL.\n")
+    logger.info(f"Після обробки маємо {len(urls)} унікальн(ий/их) URL.\n")
 
     url_status_dict = build_url_status_dict(urls)
     logger.info(
